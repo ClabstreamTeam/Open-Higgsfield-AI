@@ -1,4 +1,4 @@
-import { getModelById, getVideoModelById, getI2IModelById, getI2VModelById, getV2VModelById } from './models.js';
+import { getModelById, getVideoModelById, getI2IModelById, getI2VModelById, getV2VModelById, getLipSyncModelById } from './models.js';
 
 export class MuapiClient {
     constructor() {
@@ -440,6 +440,68 @@ export class MuapiClient {
             return { ...result, url: videoUrl };
         } catch (error) {
             console.error('Muapi V2V Error:', error);
+            throw error;
+        }
+    }
+
+    /**
+     * Processes lipsync / speech-to-video generation.
+     * Supports image+audio → video and video+audio → video models.
+     * @param {Object} params
+     * @param {string} params.model - lipsyncModel id
+     * @param {string} [params.image_url] - Portrait image URL (image-based models)
+     * @param {string} [params.video_url] - Source video URL (video-based models)
+     * @param {string} params.audio_url - Audio file URL
+     * @param {string} [params.prompt] - Optional prompt (for models that support it)
+     * @param {string} [params.resolution] - Output resolution
+     * @param {number} [params.seed] - Optional seed (-1 for random)
+     * @param {Function} [params.onRequestId] - Called when request_id is received
+     */
+    async processLipSync(params) {
+        const key = this.getKey();
+        const modelInfo = getLipSyncModelById(params.model);
+        const endpoint = modelInfo?.endpoint || params.model;
+        const url = `${this.baseUrl}/api/v1/${endpoint}`;
+
+        const finalPayload = {};
+
+        if (params.audio_url) finalPayload.audio_url = params.audio_url;
+        if (params.image_url) finalPayload.image_url = params.image_url;
+        if (params.video_url) finalPayload.video_url = params.video_url;
+        if (params.prompt) finalPayload.prompt = params.prompt;
+        if (params.resolution) finalPayload.resolution = params.resolution;
+        if (params.seed !== undefined && params.seed !== -1) finalPayload.seed = params.seed;
+
+        console.log('[Muapi] LipSync Request:', url);
+        console.log('[Muapi] LipSync Payload:', finalPayload);
+
+        try {
+            const response = await fetch(url, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'x-api-key': key },
+                body: JSON.stringify(finalPayload)
+            });
+
+            if (!response.ok) {
+                const errText = await response.text();
+                console.error('[Muapi] LipSync API Error:', errText);
+                throw new Error(`API Request Failed: ${response.status} ${response.statusText} - ${errText.slice(0, 100)}`);
+            }
+
+            const submitData = await response.json();
+            console.log('[Muapi] LipSync Submit Response:', submitData);
+
+            const requestId = submitData.request_id || submitData.id;
+            if (!requestId) return submitData;
+
+            if (params.onRequestId) params.onRequestId(requestId);
+
+            const result = await this.pollForResult(requestId, key, 900, 2000);
+            const videoUrl = result.outputs?.[0] || result.url || result.output?.url;
+            console.log('[Muapi] LipSync Result URL:', videoUrl);
+            return { ...result, url: videoUrl };
+        } catch (error) {
+            console.error('Muapi LipSync Error:', error);
             throw error;
         }
     }

@@ -20,6 +20,10 @@ function navigate(page) {
     import('./components/CinemaStudio.js').then(({ CinemaStudio }) => {
       contentArea.appendChild(CinemaStudio());
     });
+  } else if (page === 'lipsync') {
+    import('./components/LipSyncStudio.js').then(({ LipSyncStudio }) => {
+      contentArea.appendChild(LipSyncStudio());
+    });
   }
 }
 
