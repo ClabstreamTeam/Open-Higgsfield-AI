@@ -1,3 +1,53 @@
+function computeImageDimensions(aspectRatio = "1:1", quality = null, explicitWidth, explicitHeight) {
+  const safeExplicitWidth = Number(explicitWidth);
+  const safeExplicitHeight = Number(explicitHeight);
+  if (
+    Number.isFinite(safeExplicitWidth) &&
+    Number.isFinite(safeExplicitHeight) &&
+    safeExplicitWidth > 0 &&
+    safeExplicitHeight > 0
+  ) {
+    return {
+      width: Math.max(256, Math.min(2048, Math.round(safeExplicitWidth / 64) * 64)),
+      height: Math.max(256, Math.min(2048, Math.round(safeExplicitHeight / 64) * 64)),
+    };
+  }
+
+  const [wRaw, hRaw] = String(aspectRatio)
+    .split(":")
+    .map((n) => Number(n));
+  const ratioW = Number.isFinite(wRaw) && wRaw > 0 ? wRaw : 1;
+  const ratioH = Number.isFinite(hRaw) && hRaw > 0 ? hRaw : 1;
+  const ratio = ratioW / ratioH;
+
+  let longSide = 1024;
+  const q = String(quality || "").toLowerCase();
+  if (q === "high") longSide = 1344;
+  if (q === "basic") longSide = 1024;
+
+  const resolutionMatch = q.match(/^(\d{3,5})\s*[x×]\s*(\d{3,5})$/);
+  if (resolutionMatch) {
+    return {
+      width: Math.max(256, Math.min(2048, Math.round(Number(resolutionMatch[1]) / 64) * 64)),
+      height: Math.max(256, Math.min(2048, Math.round(Number(resolutionMatch[2]) / 64) * 64)),
+    };
+  }
+
+  const round64 = (n) => Math.max(256, Math.min(2048, Math.round(n / 64) * 64));
+
+  if (ratio >= 1) {
+    return {
+      width: round64(longSide),
+      height: round64(longSide / ratio),
+    };
+  }
+
+  return {
+    width: round64(longSide * ratio),
+    height: round64(longSide),
+  };
+}
+
 export async function POST(req) {
   try {
     const body = await req.json();
@@ -11,6 +61,15 @@ export async function POST(req) {
     if (!prompt || !String(prompt).trim()) {
       return Response.json({ error: "Missing prompt" }, { status: 400 });
     }
+
+    const aspectRatio = body?.aspectRatio || "1:1";
+    const quality = body?.quality || null;
+    const { width, height } = computeImageDimensions(
+      aspectRatio,
+      quality,
+      body?.width,
+      body?.height,
+    );
 
     const candidateModels = [
       "black-forest-labs/FLUX.1-schnell",
@@ -37,6 +96,10 @@ export async function POST(req) {
           },
           body: JSON.stringify({
             inputs: prompt,
+            parameters: {
+              width,
+              height,
+            },
             options: {
               wait_for_model: true,
             },

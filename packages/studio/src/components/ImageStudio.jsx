@@ -33,6 +33,42 @@ async function downloadImage(url, filename) {
   }
 }
 
+function computeImageDimensions(aspectRatio = "1:1", quality = null) {
+  const [wRaw, hRaw] = String(aspectRatio)
+    .split(":")
+    .map((n) => Number(n));
+  const ratioW = Number.isFinite(wRaw) && wRaw > 0 ? wRaw : 1;
+  const ratioH = Number.isFinite(hRaw) && hRaw > 0 ? hRaw : 1;
+  const ratio = ratioW / ratioH;
+
+  let longSide = 1024;
+  const q = String(quality || "").toLowerCase();
+  if (q === "high") longSide = 1344;
+  if (q === "basic") longSide = 1024;
+
+  const resolutionMatch = q.match(/^(\d{3,5})\s*[x×]\s*(\d{3,5})$/);
+  if (resolutionMatch) {
+    return {
+      width: Number(resolutionMatch[1]),
+      height: Number(resolutionMatch[2]),
+    };
+  }
+
+  const round64 = (n) => Math.max(256, Math.min(2048, Math.round(n / 64) * 64));
+
+  if (ratio >= 1) {
+    return {
+      width: round64(longSide),
+      height: round64(longSide / ratio),
+    };
+  }
+
+  return {
+    width: round64(longSide * ratio),
+    height: round64(longSide),
+  };
+}
+
 // ─── UploadButton (inline picker) ───────────────────────────────────────────
 
 function UploadButton({ apiKey, maxImages, onSelect, onClear, initialUrls = [] }) {
@@ -832,6 +868,7 @@ export default function ImageStudio({ apiKey, onGenerationComplete, historyItems
     setGenerating(true);
 
     try {
+      const { width, height } = computeImageDimensions(selectedAr, selectedQuality);
       let generatedModelLabel = ACTIVE_IMAGE_MODEL_LABEL;
       let response = await fetch("/api/generate/image", {
         method: "POST",
@@ -840,6 +877,10 @@ export default function ImageStudio({ apiKey, onGenerationComplete, historyItems
         },
         body: JSON.stringify({
           prompt,
+          aspectRatio: selectedAr,
+          quality: selectedQuality,
+          width,
+          height,
         }),
       });
 
@@ -862,6 +903,10 @@ export default function ImageStudio({ apiKey, onGenerationComplete, historyItems
             },
             body: JSON.stringify({
               inputs: prompt,
+              parameters: {
+                width,
+                height,
+              },
               options: { wait_for_model: true },
             }),
           },
@@ -936,7 +981,8 @@ export default function ImageStudio({ apiKey, onGenerationComplete, historyItems
                 <img
                   src={entry.url}
                   alt={entry.prompt?.substring(0, 30) || "Generated image"}
-                  className="w-full aspect-square object-cover bg-black/40 cursor-pointer hover:opacity-80 transition-opacity"
+                  className="w-full object-cover bg-black/40 cursor-pointer hover:opacity-80 transition-opacity"
+                  style={{ aspectRatio: String(entry.aspect_ratio || "1:1").replace(":", " / ") }}
                   onClick={() => setFullscreenUrl(entry.url)}
                 />
 
