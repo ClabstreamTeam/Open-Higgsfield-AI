@@ -832,7 +832,8 @@ export default function ImageStudio({ apiKey, onGenerationComplete, historyItems
     setGenerating(true);
 
     try {
-      const response = await fetch("/api/generate/image", {
+      let generatedModelLabel = ACTIVE_IMAGE_MODEL_LABEL;
+      let response = await fetch("/api/generate/image", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -841,6 +842,31 @@ export default function ImageStudio({ apiKey, onGenerationComplete, historyItems
           prompt,
         }),
       });
+
+      if (response.status === 404) {
+        const publicToken = process.env.NEXT_PUBLIC_HUGGINGFACE_API_KEY;
+        if (!publicToken) {
+          throw new Error(
+            "Live static deployment has no backend API. Set NEXT_PUBLIC_HUGGINGFACE_API_KEY for GitHub Pages generation.",
+          );
+        }
+
+        generatedModelLabel = "Hugging Face (public router)";
+        response = await fetch(
+          "https://router.huggingface.co/hf-inference/models/black-forest-labs/FLUX.1-schnell",
+          {
+            method: "POST",
+            headers: {
+              Authorization: `Bearer ${publicToken}`,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              inputs: prompt,
+              options: { wait_for_model: true },
+            }),
+          },
+        );
+      }
 
       if (!response.ok) {
         let message = "Image generation failed";
@@ -875,7 +901,7 @@ export default function ImageStudio({ apiKey, onGenerationComplete, historyItems
         id: `img-${Date.now()}`,
         url: imageUrl,
         prompt,
-        model: ACTIVE_IMAGE_MODEL_LABEL,
+        model: generatedModelLabel,
         aspect_ratio: selectedAr,
       };
 

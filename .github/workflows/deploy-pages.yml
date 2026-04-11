@@ -35,6 +35,8 @@ jobs:
         run: rm -rf app/api
 
       - name: Build static export
+        env:
+          NEXT_PUBLIC_HUGGINGFACE_API_KEY: ${{ secrets.HUGGINGFACE_API_KEY }}
         run: npm run build
 
       - name: Upload Pages artifact
