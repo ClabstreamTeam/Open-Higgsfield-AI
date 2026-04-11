@@ -637,6 +637,7 @@ function SimpleDropdown({ title, options, selected, onSelect, onClose }) {
 
 export default function ImageStudio({ apiKey, onGenerationComplete, historyItems }) {
   const PERSIST_KEY = "hg_image_studio_persistent";
+  const ACTIVE_IMAGE_MODEL_LABEL = "Hugging Face (auto model)";
 
   const [imageMode, setImageMode] = useState(false);
   const [selectedModelId, setSelectedModelId] = useState(t2iModels[0].id);
@@ -822,10 +823,71 @@ export default function ImageStudio({ apiKey, onGenerationComplete, historyItems
   };
 
   const handleGenerate = async () => {
-    alert(
-      "Generation is temporarily unavailable because the provider account does not have enough credits yet.",
-    );
-    return;
+    if (!prompt.trim()) {
+      setGenerateError("Please enter a prompt");
+      return;
+    }
+
+    setGenerateError(null);
+    setGenerating(true);
+
+    try {
+      const response = await fetch("/api/generate/image", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          prompt,
+        }),
+      });
+
+      if (!response.ok) {
+        let message = "Image generation failed";
+        const contentType = response.headers.get("content-type") || "";
+
+        if (contentType.includes("application/json")) {
+          const errorData = await response.json().catch(() => ({}));
+          const attempts = Array.isArray(errorData?.attempts)
+            ? errorData.attempts
+                .map((a) => `${a.model} (${a.status})`)
+                .join(", ")
+            : null;
+          message = errorData?.error || message;
+          if (attempts) {
+            message = `${message} Tried: ${attempts}`;
+          }
+        } else {
+          const errorText = await response.text().catch(() => "");
+          if (errorText) message = errorText;
+        }
+
+        throw new Error(message);
+      }
+
+      const blob = await response.blob();
+      if (!blob || blob.size === 0) {
+        throw new Error("No image returned from backend");
+      }
+
+      const imageUrl = URL.createObjectURL(blob);
+      const newEntry = {
+        id: `img-${Date.now()}`,
+        url: imageUrl,
+        prompt,
+        model: ACTIVE_IMAGE_MODEL_LABEL,
+        aspect_ratio: selectedAr,
+      };
+
+      setLocalHistory([newEntry, ...history]);
+      if (onGenerationComplete) onGenerationComplete(newEntry);
+      setPrompt("");
+      setUploadedImageUrls([]);
+    } catch (err) {
+      setGenerateError(err.message || "Generation failed");
+    } finally {
+      setGenerating(false);
+    }
   };
 
   const placeholderText =
@@ -939,9 +1001,11 @@ export default function ImageStudio({ apiKey, onGenerationComplete, historyItems
         className="absolute bottom-4 w-full max-w-[95%] lg:max-w-4xl z-40 animate-fade-in-up"
         style={{ animationDelay: "0.2s" }}
       >
-        <div className="mb-3 rounded-md border border-yellow-500/30 bg-yellow-500/10 px-4 py-3 text-sm text-yellow-200">
-          Provider connection is configured, but image generation is temporarily unavailable because the account has insufficient credits.
-        </div>
+        {generateError && (
+          <div className="mb-3 rounded-md border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-200">
+            {generateError}
+          </div>
+        )}
 
         <div className="w-full bg-[#0a0a0a]/80 backdrop-blur-3xl rounded-md border border-white/10 p-4 flex flex-col gap-2 shadow-2xl">
           <div className="flex items-center gap-2">
@@ -970,17 +1034,15 @@ export default function ImageStudio({ apiKey, onGenerationComplete, historyItems
               <div className="relative">
                 <button
                   type="button"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setDropdownOpen((o) => (o === "model" ? null : "model"));
-                  }}
-                  className="flex items-center gap-2 px-3 py-2 bg-white/[0.03] hover:bg-white/[0.06] rounded-md transition-all border border-white/[0.03] group whitespace-nowrap"
+                  disabled={true}
+                  title="Image backend is fixed to Stable Diffusion 2.1 on Hugging Face"
+                  className="flex items-center gap-2 px-3 py-2 bg-white/[0.03] rounded-md transition-all border border-white/[0.03] group whitespace-nowrap opacity-80 cursor-not-allowed"
                 >
                   <div className="w-4 h-4 bg-[#d9ff00] rounded flex items-center justify-center">
                     <span className="text-[9px] font-bold text-black uppercase">G</span>
                   </div>
                   <span className="text-xs font-semibold text-white/70 group-hover:text-[#d9ff00] transition-colors">
-                    {selectedModelName}
+                    {ACTIVE_IMAGE_MODEL_LABEL}
                   </span>
                   <svg
                     width="10"
@@ -994,21 +1056,6 @@ export default function ImageStudio({ apiKey, onGenerationComplete, historyItems
                     <path d="M6 9l6 6 6-6" />
                   </svg>
                 </button>
-
-                {dropdownOpen === "model" && (
-                  <div
-                    ref={dropdownRef}
-                    onClick={(e) => e.stopPropagation()}
-                    className="absolute bottom-[calc(100%+12px)] left-0 z-50 bg-[#0a0a0a] rounded-lg p-3 shadow-2xl border border-white/[0.05] w-[calc(100vw-3rem)] max-w-xs"
-                  >
-                    <ModelDropdown
-                      models={currentModels}
-                      selectedModel={selectedModelId}
-                      onSelect={handleModelSelect}
-                      onClose={() => setDropdownOpen(null)}
-                    />
-                  </div>
-                )}
               </div>
 
               <div className="relative">
@@ -1083,11 +1130,22 @@ export default function ImageStudio({ apiKey, onGenerationComplete, historyItems
             <button
               type="button"
               onClick={handleGenerate}
-              disabled={true}
-              title="Generation is unavailable until provider credits are added"
-              className="bg-white/10 text-white/60 px-4 py-2 rounded-md font-medium text-sm transition-all flex items-center justify-center gap-2 w-full sm:w-auto border border-white/10 cursor-not-allowed z-10"
+              disabled={generating}
+              title={generating ? "Generating..." : "Generate image"}
+              className={`px-4 py-2 rounded-md font-medium text-sm transition-all flex items-center justify-center gap-2 w-full sm:w-auto border z-10 ${
+                generating
+                  ? "bg-primary/50 text-black cursor-wait border-primary/50"
+                  : "bg-primary text-black hover:bg-primary/90 hover:scale-105 border-primary/50"
+              }`}
             >
-              <span>Unavailable</span>
+              {generating ? (
+                <>
+                  <div className="w-3 h-3 rounded-full border border-black/30 border-t-black animate-spin" />
+                  Generating...
+                </>
+              ) : (
+                <span>Generate</span>
+              )}
             </button>
           </div>
         </div>

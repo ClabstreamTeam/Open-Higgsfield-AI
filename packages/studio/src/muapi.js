@@ -31,38 +31,16 @@ async function submitAndPoll(endpoint, payload, key, onRequestId, maxAttempts = 
     const response = await fetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-         ...payload,
-         endpoint
-})
+        body: JSON.stringify({ ...payload })
     });
     if (!response.ok) {
-        const errText = await response.text();
-        throw new Error(`API Request Failed: ${response.status} ${response.statusText} - ${errText.slice(0, 100)}`);
+        const errData = await response.json().catch(() => ({}));
+        const message = errData?.error || `API Request Failed: ${response.status} ${response.statusText}`;
+        throw new Error(message);
     }
-    const submitData = await response.json();
-    const requestId = submitData.request_id || submitData.id;
-    if (!requestId) return submitData;
-    if (onRequestId) onRequestId(requestId);
-    const result = await pollForResult(requestId, key, maxAttempts);
+    const result = await response.json();
 
-console.log('POLL RESULT:', result);
-
-const firstOutput = Array.isArray(result.outputs) ? result.outputs[0] : null;
-
-const outputUrl =
-  (typeof firstOutput === 'string' ? firstOutput : null) ||
-  firstOutput?.url ||
-  result.url ||
-  result.output?.url ||
-  result.data?.url ||
-  result.result?.url ||
-  result.result?.outputs?.[0] ||
-  result.data?.outputs?.[0];
-
-console.log('EXTRACTED URL:', outputUrl);
-
-return { ...result, url: outputUrl };
+    return { ...result, url: result?.url || null };
 }
 
 export async function generateImage(apiKey, params) {

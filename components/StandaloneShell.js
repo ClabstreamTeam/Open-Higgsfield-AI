@@ -41,9 +41,15 @@ export default function StandaloneShell() {
       </header>
 
       <main className="p-6">
-        <div className="mb-4 rounded border border-yellow-500/30 bg-yellow-500/10 p-3 text-sm text-yellow-200">
-          Provider connection is set up, but generation is temporarily unavailable because the account has insufficient credits.
-        </div>
+        {activeTab === 'image' ? (
+          <div className="mb-4 rounded border border-lime-500/30 bg-lime-500/10 p-3 text-sm text-lime-200">
+            Image generation is active via Hugging Face with automatic backend model fallback.
+          </div>
+        ) : (
+          <div className="mb-4 rounded border border-yellow-500/30 bg-yellow-500/10 p-3 text-sm text-yellow-200">
+            Provider connection is set up, but generation is temporarily unavailable for this studio because the account has insufficient credits.
+          </div>
+        )}
 
         {activeTab === 'image' && <ImageStudio apiKey={apiKey} />}
         {activeTab === 'video' && <VideoStudio apiKey={apiKey} />}
