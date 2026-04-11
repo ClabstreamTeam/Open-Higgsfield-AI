@@ -37,6 +37,7 @@ jobs:
       - name: Build static export
         env:
           NEXT_PUBLIC_HUGGINGFACE_API_KEY: ${{ secrets.HUGGINGFACE_API_KEY }}
+          NEXT_PUBLIC_PUBLIC_APP_URL: https://open-higgsfield-ai-three.vercel.app
         run: npm run build
 
       - name: Upload Pages artifact
