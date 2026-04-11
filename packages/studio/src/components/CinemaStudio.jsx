@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef, useCallback } from "react";
+import { generateImage } from "../muapi.js";
 
 // ─── Constants (inlined from promptUtils) ───────────────────────────────────
 
@@ -481,6 +482,7 @@ export default function CinemaStudio({
   const [canvasUrl, setCanvasUrl] = useState(null); // null = prompt view
   const [fullscreenUrl, setFullscreenUrl] = useState(null);
   const [activeHistoryIndex, setactiveHistoryIndex] = useState(null);
+  const [isGenerating, setIsGenerating] = useState(false);
 
   // ── Internal history state (used when historyItems prop is not provided) ──
   const [internalHistory, setInternalHistory] = useState([]);
@@ -546,11 +548,52 @@ export default function CinemaStudio({
   };
 
   // ── Generate ──
-  const handleGenerate = useCallback(() => {
-    alert(
-      "Generation is temporarily unavailable because the provider account does not have enough credits yet.",
-    );
-  }, []);
+  const handleGenerate = useCallback(async () => {
+    const basePrompt = (settings.prompt || "").trim();
+    if (!basePrompt || isGenerating) return;
+
+    setIsGenerating(true);
+    try {
+      const finalPrompt = buildNanoBananaPrompt(
+        basePrompt,
+        settings.camera,
+        settings.lens,
+        settings.focal,
+        settings.aperture,
+      );
+
+      const result = await generateImage(undefined, {
+        model: "nano-banana",
+        prompt: finalPrompt,
+        aspect_ratio: settings.aspect_ratio,
+        resolution: resolution.toLowerCase(),
+        quality: "high",
+      });
+
+      const url = result?.url;
+      if (!url) throw new Error("No image URL returned from provider.");
+
+      const entry = {
+        id: `cinema_${Date.now()}`,
+        url,
+        timestamp: Date.now(),
+        settings: {
+          ...settings,
+          prompt: basePrompt,
+          resolution,
+        },
+      };
+
+      setInternalHistory((prev) => [entry, ...prev].slice(0, 50));
+      setCanvasUrl(url);
+      setactiveHistoryIndex(0);
+    } catch (err) {
+      console.error("[CinemaStudio] Generation failed:", err);
+      alert(`Generation failed: ${err.message}`);
+    } finally {
+      setIsGenerating(false);
+    }
+  }, [settings, resolution, isGenerating]);
 
   // ── Regenerate ──
   const handleRegenerate = useCallback(() => {
@@ -726,8 +769,8 @@ export default function CinemaStudio({
 
       {/* ── BOTTOM PROMPT BAR ── */}
       <div className="absolute bottom-4 left-4 right-4 md:left-0 md:right-0 md:mx-auto md:max-w-[95%] lg:max-w-4xl z-30 transition-all duration-700 animate-fade-in-up">
-        <div className="mb-3 rounded-md border border-yellow-500/30 bg-yellow-500/10 px-4 py-3 text-sm text-yellow-200">
-          Provider connection is configured, but cinema generation is temporarily unavailable because the account has insufficient credits.
+        <div className="mb-3 rounded-md border border-primary/20 bg-primary/5 px-4 py-3 text-sm text-primary/90">
+          Build your shot with camera controls, then generate a cinematic still.
         </div>
 
         <div className="bg-[#0a0a0a]/80 backdrop-blur-3xl border border-white/10 rounded-md p-4 flex justify-between shadow-2xl items-end relative gap-2">
@@ -814,12 +857,18 @@ export default function CinemaStudio({
 
                 {/* Generate Button */}
                 <button
-                  className="h-[50px] px-8 bg-white/10 text-white/60 rounded-md font-medium text-sm transition-all flex items-center justify-center gap-2 border border-white/10 cursor-not-allowed"
-                  disabled={true}
-                  title="Generation is unavailable until provider credits are added"
+                  className={`h-[50px] px-8 rounded-md font-medium text-sm transition-all flex items-center justify-center gap-2 border ${isGenerating || !settings.prompt.trim() ? "bg-white/10 text-white/60 border-white/10 cursor-not-allowed" : "bg-primary text-black border-primary/40 hover:brightness-110"}`}
+                  disabled={isGenerating || !settings.prompt.trim()}
+                  title={
+                    !settings.prompt.trim()
+                      ? "Enter a prompt first"
+                      : isGenerating
+                        ? "Generating..."
+                        : "Generate cinema still"
+                  }
                   onClick={handleGenerate}
                 >
-                  <span>Unavailable</span>
+                  <span>{isGenerating ? "Generating..." : "Generate ✨"}</span>
                 </button>
               </div>
             </div>

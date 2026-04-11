@@ -1,7 +1,12 @@
 'use client';
 
 import { useState } from 'react';
-import { ImageStudio, VideoStudio, LipSyncStudio, CinemaStudio } from 'studio';
+import {
+  ImageStudio,
+  VideoStudio,
+  LipSyncStudio,
+  CinemaStudio,
+} from '@/packages/studio/src';
 
 const TABS = [
   { id: 'image', label: 'Image Studio' },

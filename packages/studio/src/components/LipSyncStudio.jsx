@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef, useCallback } from "react";
-import { uploadFile } from "../muapi.js";
+import { uploadFile, processLipSync } from "../muapi.js";
 import {
   lipsyncModels,
   imageLipSyncModels,
@@ -330,6 +330,7 @@ export default function LipSyncStudio({
   const [fullscreenUrl, setFullscreenUrl] = useState(null);
   const [view, setView] = useState("input"); // 'input' | 'result'
   const [activeResultUrl, setActiveResultUrl] = useState(null);
+  const [isGenerating, setIsGenerating] = useState(false);
 
   // ── History ─────────────────────────────────────────────────────────────
   // If historyItems prop is provided, use it; otherwise use internal state.
@@ -561,10 +562,61 @@ export default function LipSyncStudio({
   };
 
   // ── Generation ──────────────────────────────────────────────────────────
-  const handleGenerate = () => {
-    alert(
-      "Generation is temporarily unavailable because the provider account does not have enough credits yet.",
-    );
+  const handleGenerate = async () => {
+    if (isGenerating) return;
+
+    if (audioState !== UPLOAD_STATE.READY || !audioUrl) {
+      alert("Please upload an audio file first.");
+      return;
+    }
+    if (inputMode === "image" && (imageState !== UPLOAD_STATE.READY || !imageUrl)) {
+      alert("Please upload a portrait image first.");
+      return;
+    }
+    if (inputMode === "video" && (videoState !== UPLOAD_STATE.READY || !videoUrl)) {
+      alert("Please upload a video first.");
+      return;
+    }
+
+    setIsGenerating(true);
+    try {
+      let capturedRequestId = null;
+      const onRequestId = (rid) => {
+        capturedRequestId = rid;
+      };
+
+      const result = await processLipSync(apiKey, {
+        model: selectedModelId,
+        audio_url: audioUrl,
+        image_url: inputMode === "image" ? imageUrl : undefined,
+        video_url: inputMode === "video" ? videoUrl : undefined,
+        prompt: showPrompt ? prompt.trim() || undefined : undefined,
+        resolution: showResolution ? selectedResolution : undefined,
+        onRequestId,
+      });
+
+      const url = result?.url || result?.outputs?.[0] || result?.output?.url;
+      if (!url) throw new Error("No video URL returned from provider.");
+
+      const entry = {
+        id: capturedRequestId || result?.request_id || result?.id || String(Date.now()),
+        url,
+        model: selectedModel?.name || selectedModelId,
+        resolution: showResolution ? selectedResolution : undefined,
+        prompt: showPrompt ? prompt.trim() : "",
+        timestamp: new Date().toISOString(),
+      };
+
+      addToInternalHistory(entry);
+      setActiveHistoryIdx(0);
+      setActiveResultUrl(url);
+      setView("result");
+    } catch (err) {
+      console.error("[LipSyncStudio] Generation failed:", err);
+      alert(`Generation failed: ${err.message}`);
+    } finally {
+      setIsGenerating(false);
+    }
   };
 
   // ── Reset to input view ─────────────────────────────────────────────────
@@ -603,6 +655,10 @@ export default function LipSyncStudio({
     audioState === UPLOAD_STATE.READY ? "text-primary" : "text-muted";
 
   const hasHistory = history.length > 0;
+  const canGenerate =
+    !isGenerating &&
+    audioState === UPLOAD_STATE.READY &&
+    (inputMode === "image" ? imageState === UPLOAD_STATE.READY : videoState === UPLOAD_STATE.READY);
 
   // ── Dropdown item lists ─────────────────────────────────────────────────
   const modelDropdownItems = currentModels;
@@ -715,8 +771,8 @@ export default function LipSyncStudio({
 
       {/* ── BOTTOM PROMPT BAR ── */}
       <div className="absolute bottom-4 w-full max-w-[95%] lg:max-w-4xl z-40 animate-fade-in-up" style={{ animationDelay: "0.2s" }}>
-        <div className="mb-3 rounded-md border border-yellow-500/30 bg-yellow-500/10 px-4 py-3 text-sm text-yellow-200">
-          Provider connection is configured, but lip sync generation is temporarily unavailable because the account has insufficient credits.
+        <div className="mb-3 rounded-md border border-primary/20 bg-primary/5 px-4 py-3 text-sm text-primary/90">
+          Upload media + audio, then generate synced speech video.
         </div>
 
         <div className="w-full bg-[#0a0a0a]/80 backdrop-blur-3xl rounded-md border border-white/10 p-4 flex flex-col gap-2 shadow-2xl">
@@ -923,11 +979,11 @@ export default function LipSyncStudio({
             <button
               type="button"
               onClick={handleGenerate}
-              disabled={true}
-              title="Generation is unavailable until provider credits are added"
-              className="bg-white/10 text-white/60 px-4 py-2 rounded-md font-medium text-sm transition-all flex items-center justify-center gap-2 w-full sm:w-auto border border-white/10 cursor-not-allowed"
+              disabled={!canGenerate}
+              title={!canGenerate ? "Upload required media first" : "Generate lip sync"}
+              className={`px-4 py-2 rounded-md font-medium text-sm transition-all flex items-center justify-center gap-2 w-full sm:w-auto border ${canGenerate ? "bg-primary text-black border-primary/40 hover:brightness-110" : "bg-white/10 text-white/60 border-white/10 cursor-not-allowed"}`}
             >
-              <span>Unavailable</span>
+              <span>{isGenerating ? "Generating..." : "Generate ✨"}</span>
             </button>
           </div>
         </div>

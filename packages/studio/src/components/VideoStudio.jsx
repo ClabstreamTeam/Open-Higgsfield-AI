@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef, useCallback } from "react";
-import { uploadFile } from "../muapi.js";
+import { uploadFile, generateVideo, generateI2V, generateV2V } from "../muapi.js";
 import {
   t2vModels,
   i2vModels,
@@ -284,6 +284,7 @@ export default function VideoStudio({
   const [showCanvas, setShowCanvas] = useState(false);
   const [lastGenerationId, setLastGenerationId] = useState(null);
   const [lastGenerationModel, setLastGenerationModel] = useState(null);
+  const [isGenerating, setIsGenerating] = useState(false);
 
   // ── history ──
   const [localHistory, setLocalHistory] = useState([]);
@@ -654,11 +655,134 @@ export default function VideoStudio({
   }, []);
 
   // ── generate ──────────────────────────────────────────────────────────────
-  const handleGenerate = useCallback(() => {
-    alert(
-      "Generation is temporarily unavailable because the provider account does not have enough credits yet.",
-    );
-  }, []);
+  const handleGenerate = useCallback(async () => {
+    if (isGenerating || imageUploading || videoUploading) return;
+
+    const trimmedPrompt = prompt.trim();
+
+    if (v2vMode && !uploadedVideoUrl) {
+      alert("Please upload a video first.");
+      return;
+    }
+    if (imageMode && !v2vMode && !uploadedImageUrl) {
+      alert("Please upload an image first.");
+      return;
+    }
+    if (!imageMode && !v2vMode && !isExtendMode && !trimmedPrompt) {
+      alert("Please enter a prompt.");
+      return;
+    }
+    if (isExtendMode && !lastGenerationId) {
+      alert("Generate a Seedance video first, then use Extend.");
+      return;
+    }
+
+    setIsGenerating(true);
+    try {
+      let capturedRequestId = null;
+      const onRequestId = (rid) => {
+        capturedRequestId = rid;
+      };
+
+      let result;
+      if (v2vMode) {
+        result = await generateV2V(apiKey, {
+          model: selectedModel,
+          video_url: uploadedVideoUrl,
+          prompt: trimmedPrompt || undefined,
+          resolution: selectedResolution || undefined,
+          duration: selectedDuration || undefined,
+          mode: selectedMode || undefined,
+          onRequestId,
+        });
+      } else if (imageMode) {
+        result = await generateI2V(apiKey, {
+          model: selectedModel,
+          image_url: uploadedImageUrl,
+          prompt: trimmedPrompt || undefined,
+          aspect_ratio: selectedAr || undefined,
+          duration: selectedDuration || undefined,
+          resolution: selectedResolution || undefined,
+          quality: selectedQuality || undefined,
+          mode: selectedMode || undefined,
+          onRequestId,
+        });
+      } else {
+        const params = {
+          model: selectedModel,
+          prompt: trimmedPrompt || undefined,
+          duration: selectedDuration || undefined,
+          resolution: selectedResolution || undefined,
+          quality: selectedQuality || undefined,
+          mode: selectedMode || undefined,
+          onRequestId,
+        };
+
+        if (isExtendMode) {
+          params.request_id = lastGenerationId;
+        } else {
+          params.aspect_ratio = selectedAr || undefined;
+        }
+
+        result = await generateVideo(apiKey, params);
+      }
+
+      const url = result?.url || result?.outputs?.[0] || result?.output?.url;
+      if (!url) {
+        throw new Error("No video URL returned from provider.");
+      }
+
+      const generationId =
+        capturedRequestId || result?.request_id || result?.id || String(Date.now());
+      const isSeedance2Model =
+        selectedModel === "seedance-v2.0-t2v" ||
+        selectedModel === "seedance-v2.0-i2v";
+
+      if (isSeedance2Model) {
+        setLastGenerationId(generationId);
+      } else if (selectedModel !== "seedance-v2.0-extend") {
+        setLastGenerationId(null);
+      }
+      setLastGenerationModel(selectedModel);
+
+      const entry = {
+        id: generationId,
+        url,
+        prompt: trimmedPrompt,
+        model: selectedModel,
+        duration: selectedDuration,
+        resolution: selectedResolution,
+        timestamp: new Date().toISOString(),
+      };
+      addToLocalHistory(entry);
+      showVideoInCanvas(url, selectedModel);
+    } catch (err) {
+      console.error("[VideoStudio] Generation failed:", err);
+      alert(`Generation failed: ${err.message}`);
+    } finally {
+      setIsGenerating(false);
+    }
+  }, [
+    isGenerating,
+    imageUploading,
+    videoUploading,
+    prompt,
+    v2vMode,
+    imageMode,
+    uploadedVideoUrl,
+    uploadedImageUrl,
+    isExtendMode,
+    lastGenerationId,
+    apiKey,
+    selectedModel,
+    selectedResolution,
+    selectedDuration,
+    selectedMode,
+    selectedAr,
+    selectedQuality,
+    addToLocalHistory,
+    showVideoInCanvas,
+  ]);
 
   // ── reset to prompt bar ───────────────────────────────────────────────────
   const resetToPromptBar = useCallback(() => {
@@ -709,6 +833,18 @@ export default function VideoStudio({
       : isExtendMode
         ? "Optional: describe how to continue the video..."
         : "Describe the video you want to create";
+
+  const canGenerate =
+    !isGenerating &&
+    !imageUploading &&
+    !videoUploading &&
+    (v2vMode
+      ? !!uploadedVideoUrl
+      : imageMode
+        ? !!uploadedImageUrl
+        : isExtendMode
+          ? !!lastGenerationId
+          : !!prompt.trim());
 
   const toggleDropdown = (type) => (e) => {
     e.stopPropagation();
@@ -846,8 +982,8 @@ export default function VideoStudio({
 
       {/* ── BOTTOM PROMPT BAR ── */}
       <div className="absolute bottom-4 w-full max-w-[95%] lg:max-w-4xl z-40 animate-fade-in-up" style={{ animationDelay: "0.2s" }}>
-        <div className="mb-3 rounded-md border border-yellow-500/30 bg-yellow-500/10 px-4 py-3 text-sm text-yellow-200">
-          Provider connection is configured, but video generation is temporarily unavailable because the account has insufficient credits.
+        <div className="mb-3 rounded-md border border-primary/20 bg-primary/5 px-4 py-3 text-sm text-primary/90">
+          Tip: upload an image for I2V, upload a video for watermark removal, or enter a prompt for text-to-video.
         </div>
 
         <div className="w-full bg-[#0a0a0a]/80 backdrop-blur-3xl rounded-md border border-white/10 p-4 flex flex-col gap-2 shadow-2xl">
@@ -1214,11 +1350,11 @@ export default function VideoStudio({
             <button
               type="button"
               onClick={handleGenerate}
-              disabled={true}
-              title="Generation is unavailable until provider credits are added"
-              className="bg-white/10 text-white/60 px-4 py-2 rounded-md font-medium text-sm transition-all flex items-center justify-center gap-2 w-full sm:w-auto border border-white/10 cursor-not-allowed"
+              disabled={!canGenerate}
+              title={!canGenerate ? "Complete required inputs first" : "Generate video"}
+              className={`px-4 py-2 rounded-md font-medium text-sm transition-all flex items-center justify-center gap-2 w-full sm:w-auto border ${canGenerate ? "bg-primary text-black border-primary/40 hover:brightness-110" : "bg-white/10 text-white/60 border-white/10 cursor-not-allowed"}`}
             >
-              <span>Unavailable</span>
+              <span>{isGenerating ? "Generating..." : "Generate ✨"}</span>
             </button>
           </div>
         </div>
