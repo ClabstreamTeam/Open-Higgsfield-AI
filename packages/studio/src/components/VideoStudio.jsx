@@ -654,6 +654,9 @@ export default function VideoStudio({
     setShowCanvas(true);
   }, []);
 
+  const currentModelObj = getCurrentModel();
+  const isExtendMode = currentModelObj?.requiresRequestId;
+
   // ── generate ──────────────────────────────────────────────────────────────
   const handleGenerate = useCallback(async () => {
     if (isGenerating || imageUploading || videoUploading) return;
@@ -823,8 +826,6 @@ export default function VideoStudio({
   // ── derived UI values ────────────────────────────────────────────────────
   const isSeedance2Canvas =
     canvasModel === "seedance-v2.0-t2v" || canvasModel === "seedance-v2.0-i2v";
-  const currentModelObj = getCurrentModel();
-  const isExtendMode = currentModelObj?.requiresRequestId;
 
   const promptPlaceholder = v2vMode
     ? "Video ready — click Generate to remove watermark"
