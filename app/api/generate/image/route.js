@@ -145,7 +145,14 @@ export async function POST(req) {
     if (!response || !response.ok) {
       return Response.json(
         {
-          error: `No supported Hugging Face model succeeded. ${lastErrorMessage}`,
+          error:
+            `No supported Hugging Face model succeeded. ${lastErrorMessage} — ` +
+            "text-to-image is no longer served by hf-inference. " +
+            "For free generation, use the Video tab (ZeroGPU) instead of Cinema.",
+          hint:
+            "hf-inference has deprecated or dropped every text-to-image model this " +
+            "route tries (410/400). A working replacement requires an Inference " +
+            "Provider with credits (fal, together, nebius...).",
           attempts: attemptDetails,
         },
         { status: 502 }
