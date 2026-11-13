@@ -2111,6 +2111,18 @@ export const getAspectRatiosForModel = (modelId) => {
 // ==========================================
 export const t2vModels = [
   {
+    "id": "zerogpu:ltx-video",
+    "name": "LTX Video — Gratuit",
+    "endpoint": "ltx-video",
+    "provider": "zerogpu",
+    "description": "Text-to-video sans clé API, via un Space Hugging Face ZeroGPU (~9 clips courts par jour).",
+    "inputs": {
+      "prompt": { "type": "string", "title": "Prompt", "name": "prompt", "description": "Description de la scène à générer" },
+      "aspect_ratio": { "enum": ["16:9", "9:16", "1:1"], "title": "Aspect Ratio", "name": "aspect_ratio", "type": "string", "description": "Format de la vidéo.", "default": "16:9" },
+      "duration": { "enum": [2, 3, 4, 5], "title": "Duration", "name": "duration", "type": "int", "description": "Durée en secondes (24 fps). Au-delà de 3 s, le quota gratuit fond vite.", "default": 2 }
+    }
+  },
+  {
     "id": "seedance-lite-t2v",
     "name": "Seedance Lite",
     "inputs": {

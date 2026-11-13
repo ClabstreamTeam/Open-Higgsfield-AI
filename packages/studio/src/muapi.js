@@ -1,4 +1,5 @@
 import { getModelById, getVideoModelById, getI2IModelById, getI2VModelById, getV2VModelById, getLipSyncModelById } from './models.js';
+import { isZeroGpuModel, generateZeroGpuVideo } from './zerogpu.js';
 
 const BASE_URL = '';
 
@@ -113,6 +114,11 @@ export async function generateI2I(apiKey, params) {
 }
 
 export async function generateVideo(apiKey, params) {
+    // Modèles gratuits : Space Hugging Face (ZeroGPU), pas de clé API payante.
+    if (isZeroGpuModel(params.model)) {
+        return generateZeroGpuVideo(params);
+    }
+
     const modelInfo = getVideoModelById(params.model);
     const endpoint = modelInfo?.endpoint || params.model;
     const payload = {};
