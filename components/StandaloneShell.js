@@ -46,13 +46,20 @@ export default function StandaloneShell() {
       </header>
 
       <main className="p-6">
-        {activeTab === 'image' ? (
+        {activeTab === 'video' ? (
           <div className="mb-4 rounded border border-lime-500/30 bg-lime-500/10 p-3 text-sm text-lime-200">
-            Image generation is active via Hugging Face with automatic backend model fallback.
+            Génération vidéo gratuite active : modèle « LTX Video — Gratuit » via
+            Hugging Face ZeroGPU (quota de 5 min GPU par jour).
+          </div>
+        ) : activeTab === 'image' ? (
+          <div className="mb-4 rounded border border-yellow-500/30 bg-yellow-500/10 p-3 text-sm text-yellow-200">
+            Génération d&apos;images indisponible : huggingface.co n&apos;héberge plus
+            aucun modèle texte→image gratuit. Utilise l&apos;onglet Video Studio.
           </div>
         ) : (
           <div className="mb-4 rounded border border-yellow-500/30 bg-yellow-500/10 p-3 text-sm text-yellow-200">
-            Provider connection is set up, but generation is temporarily unavailable for this studio because the account has insufficient credits.
+            Ce studio nécessite une clé API payante. La génération gratuite est
+            disponible dans l&apos;onglet Video Studio.
           </div>
         )}
 
